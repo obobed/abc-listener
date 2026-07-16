@@ -5,9 +5,8 @@ from dateutil import parser
 from dotenv import load_dotenv
 import os
 
-if not load_dotenv():
-    # TODO: ERROR HANDLING
-    pass
+load_dotenv()
+
 LF_API_KEY = os.getenv("LF_API_KEY")
 LF_API_SEC = os.getenv("LF_API_SECRET")
 LF_USERNAME = os.getenv("LF_USERNAME")
@@ -43,16 +42,16 @@ def list_episodes(program_url):
     return episodes
 
 # interactive menu
+# choose program maybe later
 # def choose_program(programs):
 #     pass
 
 def choose_episode(episodes):
-    choice = questionary.select(
-        "Pick an episode to scrobble:",
-        choices=[f'{e["title"]} ({e["published"]})' for e in episodes]
-    ).ask()
-    index = [f'{e["title"]} ({e["published"][:10]})' for e in episodes].index(choice)
-    return episodes[index]
+    choices = [
+        questionary.Choice(title=f'{e["title"]} ({e["published"]})', value=e)
+        for e in episodes
+    ]
+    return questionary.select("Pick an episode to scrobble:", choices).ask()
 
 def ask_start_time():
     date_str = questionary.text("Session start date (YYYY-MM-DD):").ask()
@@ -70,11 +69,12 @@ def parse_offset(ts): # basically u need to have a time for a scrobble to occur,
     if len(parts) == 2:
         m, s = parts
         return timedelta(minutes=m, seconds=s)
-    if len(parts) > 3:
-        # TODO: ERROR HANDLING
-        pass
-    h, m, s = parts
-    return timedelta(hours=h, minutes=m, seconds=s)
+    if len(parts) == 3:
+        h, m, s = parts
+        return timedelta(hours=h, minutes=m, seconds=s)
+    
+    raise ValueError(f"Invalid timestamp: '{ts}', expected 'MM:SS' or 'HH:MM:SS'")
+    
 
 def calc_play_times(tracks, start_delta):
     for t in tracks:
@@ -103,7 +103,24 @@ def scrobble_all(network: pylast.LastFMNetwork, scrobbles): # really need the in
             title=s["title"],
             timestamp=int(s["played_at"].timestamp())
         )
+        print("scrobbled :D")
         time.sleep(0.25) # be kind to the API :3
 
 def main():
-    pass
+    program_url = questionary.text("Program URL:").ask()
+    episodes = list_episodes(program_url)
+    episode = choose_episode(episodes)
+    start_delta = ask_start_time()
+
+    tracks = extract_tracklist(episode["url"])
+    scrobbles = list(calc_play_times(tracks, start_delta))
+
+    for s in scrobbles:
+        print(f'{s["played_at"]} {s["artist"]} - {s["title"]}')
+
+    if questionary.confirm("Scrobble these to Last.fm?").ask():
+        network = get_network()
+        scrobble_all(network, scrobbles)
+        print("Done!!")
+if __name__ == "__main__":
+    main()
